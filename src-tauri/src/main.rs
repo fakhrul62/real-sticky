@@ -2,16 +2,58 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{collections::BTreeMap, fs, path::PathBuf, sync::Mutex};
 use tauri::async_runtime::JoinHandle;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
 use tempfile::NamedTempFile;
 
 type CountdownTask = Mutex<Option<(u64, JoinHandle<()>)>>;
+
+struct TaskbarPreference {
+    directory: PathBuf,
+    show: AtomicBool,
+}
+
+impl TaskbarPreference {
+    fn load(directory: PathBuf) -> Self {
+        let show = directory.join("show-in-taskbar").is_file();
+        Self {
+            directory,
+            show: AtomicBool::new(show),
+        }
+    }
+
+    fn save(&self, show: bool) -> std::io::Result<()> {
+        let marker = self.directory.join("show-in-taskbar");
+        if show {
+            fs::create_dir_all(&self.directory)?;
+            fs::write(marker, b"")?;
+        } else if let Err(error) = fs::remove_file(marker) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                return Err(error);
+            }
+        }
+        self.show.store(show, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+fn skip_taskbar(app: &AppHandle) -> bool {
+    !app.state::<TaskbarPreference>()
+        .show
+        .load(Ordering::Relaxed)
+}
+
+fn show_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    window.show()?;
+    window.unminimize()?;
+    window.set_skip_taskbar(skip_taskbar(window.app_handle()))
+}
 
 #[tauri::command]
 fn schedule_countdown(
@@ -167,8 +209,7 @@ async fn float_note(app: AppHandle, id: String) -> Result<(), String> {
     }
     let label = format!("note-{id}");
     if let Some(window) = app.get_webview_window(&label) {
-        window.show().map_err(|error| error.to_string())?;
-        window.unminimize().map_err(|error| error.to_string())?;
+        show_window(&window).map_err(|error| error.to_string())?;
         return window.set_focus().map_err(|error| error.to_string());
     }
     WebviewWindowBuilder::new(
@@ -182,6 +223,7 @@ async fn float_note(app: AppHandle, id: String) -> Result<(), String> {
     .decorations(false)
     .maximizable(false)
     .always_on_top(true)
+    .skip_taskbar(skip_taskbar(&app))
     .build()
     .map_err(|error| error.to_string())?;
     Ok(())
@@ -197,8 +239,7 @@ async fn float_time(app: AppHandle, mode: String) -> Result<(), String> {
     };
     let label = format!("time-{mode}");
     if let Some(window) = app.get_webview_window(&label) {
-        window.show().map_err(|error| error.to_string())?;
-        window.unminimize().map_err(|error| error.to_string())?;
+        show_window(&window).map_err(|error| error.to_string())?;
         return window.set_focus().map_err(|error| error.to_string());
     }
     WebviewWindowBuilder::new(
@@ -212,6 +253,7 @@ async fn float_time(app: AppHandle, mode: String) -> Result<(), String> {
     .decorations(false)
     .maximizable(false)
     .always_on_top(true)
+    .skip_taskbar(skip_taskbar(&app))
     .build()
     .map_err(|error| error.to_string())?;
     Ok(())
@@ -227,8 +269,7 @@ fn restore_windows(app: &AppHandle) {
     let mut first_restored = None;
     for window in windows.values() {
         if matches!(window.is_visible(), Ok(false)) || matches!(window.is_minimized(), Ok(true)) {
-            let _ = window.show();
-            let _ = window.unminimize();
+            let _ = show_window(window);
             first_restored.get_or_insert(window);
         }
     }
@@ -245,7 +286,15 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let restore = MenuItem::with_id(app, "restore", "Show windows", true, None::<&str>)?;
     let hide = MenuItem::with_id(app, "hide", "Minimize all to tray", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Real Sticky", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&restore, &hide, &quit])?;
+    let show_taskbar = CheckMenuItem::with_id(
+        app,
+        "show-taskbar",
+        "Show in taskbar",
+        true,
+        !skip_taskbar(app.handle()),
+        None::<&str>,
+    )?;
+    let menu = Menu::with_items(app, &[&restore, &hide, &show_taskbar, &quit])?;
     let icon = app
         .default_window_icon()
         .ok_or_else(|| std::io::Error::other("Missing Real Sticky tray icon"))?;
@@ -266,12 +315,23 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 restore_windows(tray.app_handle());
             }
         })
-        .on_menu_event(|app, event| match event.id().as_ref() {
+        .on_menu_event(move |app, event| match event.id().as_ref() {
             "restore" => restore_windows(app),
             "hide" => {
                 for window in app.webview_windows().values() {
                     let _ = window.hide();
                 }
+            }
+            "show-taskbar" => {
+                let show = skip_taskbar(app);
+                if app.state::<TaskbarPreference>().save(show).is_ok() {
+                    for window in app.webview_windows().values() {
+                        if matches!(window.is_visible(), Ok(true)) {
+                            let _ = window.set_skip_taskbar(!show);
+                        }
+                    }
+                }
+                let _ = show_taskbar.set_checked(!skip_taskbar(app));
             }
             "quit" => {
                 for window in app.webview_windows().values() {
@@ -289,8 +349,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
+                let _ = show_window(&window);
                 let _ = window.set_focus();
             } else if let Some(config) = app
                 .config()
@@ -300,16 +359,23 @@ fn main() {
                 .find(|config| config.label == "main")
             {
                 let _ = WebviewWindowBuilder::from_config(app, config)
-                    .and_then(|builder| builder.build());
+                    .and_then(|builder| builder.skip_taskbar(skip_taskbar(app)).build());
             }
         }))
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            let directory = app.path().app_data_dir()?;
             app.manage(Storage {
-                path: app.path().app_data_dir()?.join("notes.json"),
+                path: directory.join("notes.json"),
                 notes: Mutex::new(None),
             });
             app.manage(CountdownTask::default());
+            app.manage(TaskbarPreference::load(directory));
+            if !skip_taskbar(app.handle()) {
+                if let Some(main) = app.get_webview_window("main") {
+                    main.set_skip_taskbar(false)?;
+                }
+            }
             setup_tray(app)
         })
         .invoke_handler(tauri::generate_handler![
