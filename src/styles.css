@@ -270,6 +270,15 @@ svg { height: 18px; width: 18px; flex: none; stroke-width: 1.75; }
 }
 .time-readout { align-items: end; gap: 5px; }
 .time-card:not(.time-card-floating) .time-readout .time-digits { font-size: clamp(24px, 16cqi, 38px); }
+.timer-value, .timer-duration-input {
+  text-align: left; padding: 0; border: 0; border-radius: 4px; background: transparent;
+}
+.timer-value:hover { background: #ffffff12; }
+.timer-duration-form { flex: 1; min-width: 0; }
+.timer-duration-input { display: block; width: 100%; }
+.timer-duration-input[aria-invalid='true'] { outline-color: #eba79b; }
+.timer-duration-hint { color: #ccc9b2; line-height: 1.2; }
+.timer-duration-hint[role='alert'] { color: #eba79b; }
 .time-actions { gap: 2px; padding-bottom: 6px; }
 .time-actions .icon-button { width: 25px; height: 25px; color: #ccc9b2; }
 .time-actions .start-clock, .time-actions .start-clock:hover { background: var(--accent); color: #30291a; }
@@ -280,26 +289,17 @@ svg { height: 18px; width: 18px; flex: none; stroke-width: 1.75; }
 }
 .zone-button:hover { color: #fff2a4; }
 .zone-button svg { width: 11px; height: 11px; }
-.timer-presets .timer-preset, .timer-presets .duration-button {
+.timer-presets .timer-preset, .timer-presets .duration-button, .timer-presets .duration-cancel {
   color: #dddcc8; font-size: 10px; border: 1px solid #4c4c3d; background: #292a23;
   border-radius: 4px; height: 23px; padding: 0 4px;
 }
 .timer-presets .timer-preset[aria-pressed='true'], .timer-presets button:hover { border-color: #837342; color: var(--accent); }
 .timer-presets .duration-button { width: 25px; margin-left: auto; }
-.duration-button svg { width: 13px; height: 13px; }
+.timer-presets .duration-cancel { width: 25px; }
+.duration-button svg, .duration-cancel svg { width: 13px; height: 13px; }
 .timer-done { color: var(--accent); font-size: 11px; font-weight: 700; }
-.duration-popover form { display: flex; align-items: flex-end; gap: 8px; }
-.duration-popover label { display: grid; gap: 3px; font-size: 11px; color: #dddcc8; }
-.duration-popover input {
-  width: 57px; height: 30px; border: 1px solid #565849; border-radius: 5px;
-  background: #1b1c18; padding-inline: 6px;
-}
-.duration-popover button {
-  height: 30px; border: 0; border-radius: 5px; padding: 0 9px;
-  background: var(--accent); color: #292515; font-size: 12px; font-weight: 700;
-}
 
-.tooltip, .menu, .palette-popover, .duration-popover {
+.tooltip, .menu, .palette-popover {
   background: #262820; border: 1px solid #46483b; border-radius: 8px; color: #f2f1e6;
   box-shadow: 0 7px 20px #14140e65; z-index: 5;
 }
@@ -313,7 +313,6 @@ svg { height: 18px; width: 18px; flex: none; stroke-width: 1.75; }
 .menu-check { margin-left: auto; color: var(--accent); }
 .menu-separator { margin: 3px 3px; height: 1px; background: #434437; }
 .palette-popover { display: grid; grid-template-columns: repeat(6, 24px); gap: 6px; padding: 8px; }
-.duration-popover { padding: 8px; }
 .swatch { border: 1px solid #0003; border-radius: 6px; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; color: #242318; }
 .swatch[data-tone='dark'] { color: #f3f2eb; border-color: #f3f2eb33; }
 .swatch svg { width: 13px; height: 13px; }

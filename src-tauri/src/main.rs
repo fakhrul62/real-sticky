@@ -5,6 +5,8 @@ use serde_json::Value;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{collections::BTreeMap, fs, path::PathBuf, sync::Mutex};
 use tauri::async_runtime::JoinHandle;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
 use tempfile::NamedTempFile;
@@ -165,6 +167,7 @@ async fn float_note(app: AppHandle, id: String) -> Result<(), String> {
     }
     let label = format!("note-{id}");
     if let Some(window) = app.get_webview_window(&label) {
+        window.show().map_err(|error| error.to_string())?;
         window.unminimize().map_err(|error| error.to_string())?;
         return window.set_focus().map_err(|error| error.to_string());
     }
@@ -194,6 +197,7 @@ async fn float_time(app: AppHandle, mode: String) -> Result<(), String> {
     };
     let label = format!("time-{mode}");
     if let Some(window) = app.get_webview_window(&label) {
+        window.show().map_err(|error| error.to_string())?;
         window.unminimize().map_err(|error| error.to_string())?;
         return window.set_focus().map_err(|error| error.to_string());
     }
@@ -213,10 +217,79 @@ async fn float_time(app: AppHandle, mode: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn hide_to_tray(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.hide().map_err(|error| error.to_string())
+}
+
+fn restore_windows(app: &AppHandle) {
+    let windows = app.webview_windows();
+    let mut first_restored = None;
+    for window in windows.values() {
+        if matches!(window.is_visible(), Ok(false)) || matches!(window.is_minimized(), Ok(true)) {
+            let _ = window.show();
+            let _ = window.unminimize();
+            first_restored.get_or_insert(window);
+        }
+    }
+    if let Some(window) = windows
+        .get("main")
+        .or(first_restored)
+        .or_else(|| windows.values().next())
+    {
+        let _ = window.set_focus();
+    }
+}
+
+fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let restore = MenuItem::with_id(app, "restore", "Show windows", true, None::<&str>)?;
+    let hide = MenuItem::with_id(app, "hide", "Minimize all to tray", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Real Sticky", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&restore, &hide, &quit])?;
+    let icon = app
+        .default_window_icon()
+        .ok_or_else(|| std::io::Error::other("Missing Real Sticky tray icon"))?;
+    TrayIconBuilder::new()
+        .icon(icon.clone())
+        .tooltip("Real Sticky")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                restore_windows(tray.app_handle());
+            }
+        })
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "restore" => restore_windows(app),
+            "hide" => {
+                for window in app.webview_windows().values() {
+                    let _ = window.hide();
+                }
+            }
+            "quit" => {
+                for window in app.webview_windows().values() {
+                    // Use the close-request path so notes can finish saving.
+                    let _ = window.close();
+                }
+            }
+            _ => {}
+        })
+        .build(app)?;
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             } else if let Some(config) = app
@@ -237,13 +310,14 @@ fn main() {
                 notes: Mutex::new(None),
             });
             app.manage(CountdownTask::default());
-            Ok(())
+            setup_tray(app)
         })
         .invoke_handler(tauri::generate_handler![
             load_notes,
             write_note,
             float_note,
             float_time,
+            hide_to_tray,
             schedule_countdown
         ])
         .run(tauri::generate_context!())

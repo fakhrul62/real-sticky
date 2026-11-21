@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import * as Popover from '@radix-ui/react-popover'
-import { AlarmClock, ArrowUpRight, ChevronDown, Clock3, Globe2, Pause, Play, RotateCcw, Timer, Hourglass } from 'lucide-react'
+import { AlarmClock, ArrowUpRight, Check, ChevronDown, Clock3, Globe2, Pause, Play, RotateCcw, Timer, Hourglass, X } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { IconButton, Menu, MenuItem } from './ui'
 import { desktop } from './notes'
@@ -57,6 +56,15 @@ function durationText(milliseconds: number, round: (seconds: number) => number, 
   return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+function parseDuration(value: string) {
+  const trimmed = value.trim()
+  if (!/^\d+(?::\d{1,2}){0,2}$/.test(trimmed)) return null
+  const parts = trimmed.split(':').map(Number)
+  if (parts.slice(1).some(part => part > 59)) return null
+  const seconds = parts.length === 1 ? parts[0] * 60 : parts.reduce((total, part) => total * 60 + part, 0)
+  return seconds >= 1 && seconds <= 359999 ? seconds * 1000 : null
+}
+
 function chime() {
   try {
     const context = new AudioContext()
@@ -88,9 +96,12 @@ export function TimeTools({ fixedMode, windowControls, onError }: {
   const [initialDeadline] = useState(countdown.endsAt)
   const [stopwatch, setStopwatch] = useStored<Stopwatch>('stopwatch', defaultStopwatch)
   const [now, setNow] = useState(Date.now)
-  const [durationOpen, setDurationOpen] = useState(false)
+  const [durationDraft, setDurationDraft] = useState<string | null>(null)
+  const [durationInvalid, setDurationInvalid] = useState(false)
+  const durationButton = useRef<HTMLButtonElement>(null)
   const running = countdown.endsAt !== null
   const remaining = running ? Math.max(0, countdown.endsAt! - now) : countdown.remaining
+  const countdownText = durationText(remaining, Math.ceil, countdown.duration >= 3600000)
   const finished = !running && remaining === 0
   const elapsed = stopwatch.elapsed + (stopwatch.startedAt ? Math.max(0, now - stopwatch.startedAt) : 0)
   const [zoneName, timeZone] = zones[zoneIndex] ?? zones[0]
@@ -115,10 +126,31 @@ export function TimeTools({ fixedMode, windowControls, onError }: {
     if (initialDeadline !== null) scheduleNotification(initialDeadline)
   }, [initialDeadline])
 
-  function configure(value: number) {
-    const duration = Math.round(value * 60000)
+  function configure(duration: number) {
     scheduleNotification(null)
     setCountdown({ duration, remaining: duration, endsAt: null })
+  }
+
+  function editDuration() {
+    setDurationDraft(durationText(countdown.duration, Math.ceil))
+    setDurationInvalid(false)
+  }
+
+  function closeDurationEditor() {
+    setDurationDraft(null)
+    setDurationInvalid(false)
+    requestAnimationFrame(() => durationButton.current?.focus())
+  }
+
+  function applyDuration() {
+    if (durationDraft === null) return
+    const duration = parseDuration(durationDraft)
+    if (duration === null) {
+      setDurationInvalid(true)
+      return
+    }
+    configure(duration)
+    closeDurationEditor()
   }
 
   function toggleTimer() {
@@ -180,11 +212,36 @@ export function TimeTools({ fixedMode, windowControls, onError }: {
       ) : (
         <>
           <div className="time-readout">
-            <div className="time-digits">{mode === 'timer' ? durationText(remaining, Math.ceil, countdown.duration >= 3600000) : durationText(elapsed, Math.floor)}</div>
+            {mode === 'stopwatch' ? (
+              <div className="time-digits">{durationText(elapsed, Math.floor)}</div>
+            ) : durationDraft === null ? (
+              <button ref={durationButton} type="button" className="time-digits timer-value" aria-label={`${countdownText}. Edit countdown duration`} title="Edit countdown duration" onClick={editDuration}>
+                {countdownText}
+              </button>
+            ) : (
+              <form className="timer-duration-form" onSubmit={event => { event.preventDefault(); applyDuration() }}>
+                <input
+                  className="time-digits timer-duration-input"
+                  aria-label="Custom timer duration"
+                  aria-describedby="timer-duration-hint"
+                  aria-invalid={durationInvalid}
+                  autoFocus
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={8}
+                  value={durationDraft}
+                  onFocus={event => event.currentTarget.select()}
+                  onChange={event => { setDurationDraft(event.target.value); setDurationInvalid(false) }}
+                  onKeyDown={event => {
+                    if (event.key === 'Escape') closeDurationEditor()
+                  }}
+                />
+              </form>
+            )}
             <div className="time-actions">
               <IconButton
                 label={mode === 'timer' ? 'Reset timer' : 'Reset stopwatch'}
-                onClick={mode === 'timer' ? () => configure(countdown.duration / 60000) : () => setStopwatch(defaultStopwatch)}
+                onClick={mode === 'timer' ? () => configure(countdown.duration) : () => setStopwatch(defaultStopwatch)}
               ><RotateCcw /></IconButton>
               <IconButton
                 className="start-clock"
@@ -195,29 +252,23 @@ export function TimeTools({ fixedMode, windowControls, onError }: {
           </div>
           {mode === 'timer' ? (
             <div className="time-bottom timer-presets">
-              {!fixedMode && [5, 15, 25].map(value => (
-                <button key={value} type="button" className="timer-preset" aria-pressed={countdown.duration === value * 60000} onClick={() => configure(value)}>{value}m</button>
-              ))}
-              {finished && <span className="timer-done" role="status">Time’s up</span>}
-              <Popover.Root open={durationOpen} onOpenChange={setDurationOpen}>
-                <Popover.Trigger asChild><IconButton className="duration-button" label="Set timer duration"><AlarmClock /></IconButton></Popover.Trigger>
-                <Popover.Portal>
-                  <Popover.Content className="duration-popover" align="end" side={fixedMode ? 'top' : 'bottom'} sideOffset={5} aria-label="Timer duration">
-                    <form onSubmit={event => {
-                      event.preventDefault()
-                      const data = new FormData(event.currentTarget)
-                      const duration = Number(data.get('hours')) * 60 + Number(data.get('minutes'))
-                      if (!Number.isInteger(duration) || duration < 1 || duration > 5999) return
-                      configure(duration)
-                      setDurationOpen(false)
-                    }}>
-                      <label>Hours<input name="hours" type="number" min={0} max={99} defaultValue={Math.floor(countdown.duration / 3600000)} required /></label>
-                      <label>Minutes<input name="minutes" type="number" min={0} max={59} defaultValue={Math.floor(countdown.duration / 60000) % 60} required /></label>
-                      <button type="submit">Set</button>
-                    </form>
-                  </Popover.Content>
-                </Popover.Portal>
-              </Popover.Root>
+              {durationDraft === null ? (
+                <>
+                  {!fixedMode && [5, 15, 25].map(value => (
+                    <button key={value} type="button" className="timer-preset" aria-pressed={countdown.duration === value * 60000} onClick={() => configure(value * 60000)}>{value}m</button>
+                  ))}
+                  {finished && <span className="timer-done" role="status">Time’s up</span>}
+                  <IconButton className="duration-button" label="Set timer duration" onClick={editDuration}><AlarmClock /></IconButton>
+                </>
+              ) : (
+                <>
+                  <span id="timer-duration-hint" className="timer-duration-hint" role={durationInvalid ? 'alert' : undefined}>
+                    {durationInvalid ? 'Use a valid duration' : 'Minutes, M:SS, or H:MM:SS'}
+                  </span>
+                  <IconButton className="duration-button" label="Apply timer duration" onClick={applyDuration}><Check /></IconButton>
+                  <IconButton className="duration-cancel" label="Cancel timer edit" onClick={closeDurationEditor}><X /></IconButton>
+                </>
+              )}
             </div>
           ) : <div className="time-bottom"><span>{stopwatch.startedAt ? 'Running' : elapsed ? 'Paused' : 'Ready'}</span></div>}
         </>

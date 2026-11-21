@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { invoke } from '@tauri-apps/api/core'
 import * as Popover from '@radix-ui/react-popover'
 import {
   ArrowUpRight, Check, CircleAlert, Copy, Ellipsis, Files, GripHorizontal, Minus, PanelLeft, Palette,
@@ -58,7 +59,7 @@ function FloatingTime({ mode }: { mode: TimeMode }) {
           <IconButton label={pinned ? 'Always on top: On top' : 'Always on top: Unpinned'} selected={pinned} onClick={() => void togglePin().catch(report)}>
             {pinned ? <Pin /> : <PinOff />}
           </IconButton>
-          <IconButton label="Minimize" onClick={() => void desktopWindow?.minimize().catch(report)} disabled={!desktop}><Minus /></IconButton>
+          <IconButton label="Minimize to tray" onClick={() => void invoke('hide_to_tray').catch(report)} disabled={!desktop}><Minus /></IconButton>
           <IconButton label="Close" className="window-close" onClick={close}><X /></IconButton>
         </div>
       } />
@@ -251,7 +252,7 @@ function NotesApp() {
   const pinLabel = `Always on top: ${pinned ? 'On top' : 'Unpinned'}`
   const windowActions = (
     <>
-      <IconButton label="Minimize" onClick={() => void desktopWindow?.minimize().catch(report)} disabled={!desktop}><Minus /></IconButton>
+      <IconButton label="Minimize to tray" onClick={() => void invoke('hide_to_tray').catch(report)} disabled={!desktop}><Minus /></IconButton>
       <IconButton label="Close" className="window-close" onClick={() => void close().catch(report)} disabled={!desktop && !floatingId}><X /></IconButton>
     </>
   )

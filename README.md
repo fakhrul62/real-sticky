@@ -14,7 +14,8 @@ Run the installer, or extract the portable ZIP and open `real-sticky.exe`. The p
 
 - **Keep notes in view.** Float any note, drag it by the handle beside its title, and use the pin to control whether it stays on top. The sliders icon reveals the editing tools when you need them.
 - **Write and organize.** Use headings, bold, italic, bulleted and numbered lists, checklists, and editable tables. Choose from 18 note colors, search titles and contents, star favorites, duplicate notes, and restore them from Trash.
-- **Track time.** Set a countdown in hours and minutes, choose a world clock, or start a stopwatch. Use the arrow beside the time tools to float the selected tool. Countdown controls stay in sync between the sidebar and the floating timer.
+- **Track time.** Click the timer digits to enter a custom countdown, such as `45`, `5:30`, or `2:15:00`. Use the arrow beside the time tools to float the timer, world clock, or stopwatch. Countdown controls stay in sync between the sidebar and the floating timer.
+- **Keep the taskbar clear.** Use the minimize icon to hide a window to the Windows notification area. Click the Real Sticky tray icon to restore your windows, or right-click it to hide all windows or quit.
 
 ## Keyboard shortcuts
 
