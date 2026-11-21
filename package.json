@@ -1,0 +1,36 @@
+{
+  "name": "real-sticky",
+  "version": "0.1.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "^5",
+    "@fontsource-variable/space-grotesk": "^5",
+    "@radix-ui/react-dropdown-menu": "^2",
+    "@radix-ui/react-popover": "^1",
+    "@radix-ui/react-tooltip": "^1",
+    "@tauri-apps/api": "^2",
+    "@tiptap/extension-list": "^3",
+    "@tiptap/extension-placeholder": "^3",
+    "@tiptap/extension-table": "^3",
+    "@tiptap/pm": "^3",
+    "@tiptap/react": "^3",
+    "@tiptap/starter-kit": "^3",
+    "lucide-react": "^0.577",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5",
+    "typescript": "^5.9",
+    "vite": "^7"
+  }
+}

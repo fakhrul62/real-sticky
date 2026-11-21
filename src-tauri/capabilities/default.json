@@ -1,0 +1,18 @@
+{
+  "identifier": "desktop",
+  "description": "Native controls for Real Sticky windows",
+  "windows": [
+    "main",
+    "note-*",
+    "time-*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-is-always-on-top"
+  ]
+}
